@@ -23,15 +23,32 @@ const char* password = "chiroptera";
 //G20 UART - programming
 //G21 UART - programming
 const int ledPins[] = {3, 19, 10, 5, 18, 4};
+const int therm0 = 1;
+const int therm1 = 0;
+const int pump_PowerPin = 7;
+const int pump_PwmPin = 6;
+const int pump_TachPin = 8;
 
+
+void ledControl(bool state);
+void blinkNumber(unsigned long n);
 
 void setup() {
   Serial.begin(115200);
+
   for(int i = 0; i < 6; i++)
   {
     pinMode(ledPins[i], OUTPUT);
     digitalWrite(ledPins[i], HIGH);
   }
+  pinMode(therm0, INPUT);
+  pinMode(therm1, INPUT);
+  pinMode(pump_PowerPin, OUTPUT);
+  digitalWrite(pump_PowerPin, LOW);
+  pinMode(pump_PwmPin, OUTPUT);
+  digitalWrite(pump_PwmPin, LOW);
+  pinMode(pump_TachPin, INPUT_PULLUP);
+
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   while (WiFi.waitForConnectResult() != WL_CONNECTED) {
@@ -71,6 +88,20 @@ void setup() {
   Serial.println("Ready");
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
+  digitalWrite(pump_PowerPin, HIGH);
+  digitalWrite(pump_PwmPin, HIGH);
+  unsigned long count = 0;
+  unsigned long startCounterTIme = millis();
+  bool tachState = false;
+  while(millis() - startCounterTIme < 5000)
+  {
+    bool newTachState = digitalRead(pump_TachPin);
+    if(newTachState && !tachState)count++;
+    tachState = newTachState;
+  }
+  digitalWrite(pump_PowerPin, LOW);
+  digitalWrite(pump_PwmPin, LOW);
+  blinkNumber(count);
 }
 
 
@@ -79,6 +110,7 @@ void setup() {
       
 
 void loop() {
+  
   for(int i = 0; i < 6; i++)
   {
     digitalWrite(ledPins[i], HIGH);
@@ -86,4 +118,31 @@ void loop() {
     digitalWrite(ledPins[i], LOW);
   }
   ArduinoOTA.handle();
+}
+
+
+void blinkNumber(unsigned long n)
+{
+  const unsigned long period = 500;
+  const unsigned long zeroPulse = 50;
+  const unsigned long onePulse = 250;
+  for(int i = 0; i < sizeof(n)*8; i++ )
+  {
+    ledControl(true);
+    unsigned long pulseLength;
+    if(n & (1<<i)) pulseLength = onePulse;
+    else pulseLength = zeroPulse;
+    delay(pulseLength);
+    ledControl(false);
+    delay(period - pulseLength);
+  }
+
+}
+
+void ledControl(bool state)
+{
+  for(int i = 0; i < 6; i++)
+  {
+    digitalWrite(ledPins[i], state);
+  }
 }
