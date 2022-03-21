@@ -3,8 +3,12 @@
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
-
 #include <BlynkSimpleEsp32.h>
+#include "BlynkUpdates.hpp"
+#include "Pump.h"
+
+//#include "driver/ledc.h"
+
 #define BLYNK_DEVICE_NAME "Pump"
 
 char auth[] = "ZzDsI62ylop97rvbHOaHS-F_J4jku4ZS";
@@ -37,12 +41,17 @@ const int pump_TachPin = 8;
 TaskHandle_t blynktask;
 TaskHandle_t blynkPlots;
 
+WaterPump pump(pump_TachPin, pump_PwmPin, pump_PowerPin, 1, 1);
+
 void blynkRun(void *pvParams);
 void blynkUpdateChart(void *pvParams);
 
 void ledControl(bool state);
 void blinkNumber(unsigned long n);
 void spinIncremental();
+float countPulseRate();
+
+
 
 void setup() {
   Serial.begin(115200);
@@ -54,19 +63,16 @@ void setup() {
   }
   pinMode(therm0, INPUT);
   pinMode(therm1, INPUT);
-  pinMode(pump_PowerPin, OUTPUT);
-  digitalWrite(pump_PowerPin, LOW);
-  pinMode(pump_PwmPin, OUTPUT);
-  digitalWrite(pump_PwmPin, LOW);
-  pinMode(pump_TachPin, INPUT_PULLUP);
+  pump.begin();
+  //pinMode(pump_PowerPin, OUTPUT);
+  //digitalWrite(pump_PowerPin, LOW);
+  //pinMode(pump_PwmPin, OUTPUT);
+  //digitalWrite(pump_PwmPin, LOW);
+  //pinMode(pump_TachPin, INPUT_PULLUP);
 
-  //WiFi.mode(WIFI_STA);
-  //WiFi.begin(ssid, password);
- // while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    //Serial.println("Connection Failed! Rebooting...");
-    //delay(5000);
-    //ESP.restart();
-  //}
+  ///ledcSetup(1, 25000, 10);
+  //ledcAttachPin(pump_PwmPin, 1);
+
   Blynk.begin(auth, ssid, pass);
   MDNS.begin("waterPump.local");
 
@@ -100,8 +106,6 @@ void setup() {
   Serial.println("Ready");
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
-  digitalWrite(pump_PowerPin, HIGH);
-  digitalWrite(pump_PwmPin, HIGH);
 
   xTaskCreate(
       blynkRun,
@@ -119,44 +123,34 @@ void setup() {
       NULL,
       24,
       &blynkPlots
-      );
-
-  unsigned long count = 0;
-  unsigned long startCounterTIme = millis();
-  bool tachState = false;
-  while(millis() - startCounterTIme < 5000)
-  {
-    bool newTachState = digitalRead(pump_TachPin);
-    if(newTachState && !tachState)
-    {
-      count++;
-      spinIncremental();
-    }
-    
-    tachState = newTachState;
-  }
-  digitalWrite(pump_PowerPin, LOW);
-  digitalWrite(pump_PwmPin, LOW);
-  terminal.print("tach pulses: ");
-  terminal.println(count);
-  terminal.flush();
-  //blinkNumber(count);
+      ); 
 }
 
-
-
-
-      
-
 void loop() {
-  
-  for(int i = 0; i < 6; i++)
-  {
-    digitalWrite(ledPins[i], HIGH);
-    delay(30);
-    digitalWrite(ledPins[i], LOW);
-  }
+  //countPulseRate();
+  pump.pumpUpdate();
   ArduinoOTA.handle();
+}
+
+float countPulseRate()
+{
+  static unsigned long count = 0;
+  static unsigned long lastPulseTime = 0;
+  static bool tachState = false;
+  static float tachRate = 0;
+
+  bool newTachState = digitalRead(pump_TachPin);
+  if(newTachState && !tachState)
+  {
+    count++;
+    unsigned long delta = micros() - lastPulseTime;
+    lastPulseTime = micros();
+    tachRate = 1000000.0/(float)delta; 
+    spinIncremental();
+  }
+    
+  tachState = newTachState;
+  return tachRate;
 }
 
 void blynkRun(void *pvParams)
@@ -164,7 +158,7 @@ void blynkRun(void *pvParams)
   for (;;)
   {
     Blynk.run();
-    vTaskDelay(65);
+    vTaskDelay(100);
   }
 }
 
@@ -210,7 +204,7 @@ void blynkUpdateChart(void *pvParams)
 {
   for (;;)
   {
-    Blynk.virtualWrite(V2, 0);
-    vTaskDelay(65);
+    Blynk.virtualWrite(V4, pump.pumpUpdate());
+    vTaskDelay(100);
   }
 }
