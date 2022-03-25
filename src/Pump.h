@@ -4,24 +4,31 @@
 #include "driver/pcnt.h"
 #include "driver/ledc.h"
 #include "hal/pcnt_types.h"
-
+#define TACH_EVENTS 100
 class WaterPump
 {
 public:
-    WaterPump(int tachpin, int pwmpin, int powerpin, int pwmchannel, int pulsecounter);
+    WaterPump(int tachpin, int pwmpin, int powerpin, int pwmchannel);
     void setPWM(float duty);
+    float getSpeed(unsigned long window);
     uint32_t getMaxPWMDuty();
     void begin();
-    float pumpUpdate();
+    void update();
     void enable();
     void disable();
+    bool isEnabled();
 private:
     float tachometerRate[10];
     int tachometerIndex;
     pcnt_unit_t pcnt_unit;
-    unsigned long totalPulses;
-    
-    unsigned long lastRunTime;
+    volatile unsigned long totalPulses;
+    volatile struct TachEvent
+    {
+        int edge;
+        unsigned long time;
+        unsigned long delta;
+    } events[100];
+    const int pulsesPerRev = 2;
     int _tachPin;
     int _pwmPin;
     int _powerPin;
